@@ -8,7 +8,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 DB=copiloto_pruebas
 psql "$URL" -q -c "drop database if exists $DB" -c "create database $DB"
 psql "$URL" -q -v ON_ERROR_STOP=1 -c "\\connect $DB" -f "$DIR/simulacion_supabase.sql"
-for f in "$DIR"/../migrations/*.sql; do psql "$URL" -q -v ON_ERROR_STOP=1 -c "\\connect $DB" -1 -f "$f"; done
+for f in "$DIR"/../migrations/*.sql; do psql "$URL" -q -v ON_ERROR_STOP=1 -c "\\connect $DB" -c "begin" -f "$f" -c "commit"; done
 SALIDA="$(psql "$URL" -q -v ON_ERROR_STOP=1 -c "\\connect $DB" -f "$DIR/rls.sql" 2>&1)" || { echo "$SALIDA"; exit 1; }
 echo "$SALIDA" | grep -oE '(OK|FALLA) .*' | sed 's/ (rechazado.*//'
 psql "$URL" -q -c "drop database $DB"

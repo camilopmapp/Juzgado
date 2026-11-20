@@ -3,9 +3,11 @@
 \set A '''aaaaaaaa-0000-0000-0000-000000000001'''
 \set B '''bbbbbbbb-0000-0000-0000-000000000002'''
 \set C '''cccccccc-0000-0000-0000-000000000003'''
+\set D '''dddddddd-0000-0000-0000-000000000004'''
 insert into auth.users (id, email, raw_user_meta_data) values
-  (:A, 'a@x.co', '{"nombre_completo":"Jueza A"}'), (:B, 'b@x.co', '{}'), (:C, 'c@x.co', '{}');
-select count(*) = 3 as perfiles_creados from public.perfiles \gset
+  (:A, 'a@x.co', '{"nombre_completo":"Jueza A"}'), (:B, 'b@x.co', '{}'), (:C, 'c@x.co', '{}'), (:D, 'admin@x.co', '{}');
+insert into public.administradores_plataforma values (:D);
+select count(*) = 4 as perfiles_creados from public.perfiles \gset
 \if :perfiles_creados \echo OK perfiles creados por trigger \else \echo FALLA perfiles \quit \endif
 
 create schema pruebas;
@@ -23,6 +25,16 @@ set role authenticated;
 select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}', false);
 select public.crear_despacho('Juzgado 1 Civil Municipal', '110014003001', 'Bogotá', 'Bogotá', 'Bogotá', 'civil') as d1 \gset
 select pruebas.ok((select count(*) from public.membresias where rol='juez') = 1, 'A queda como juez');
+select pruebas.ok((select count(*) from public.despachos) = 1, 'A ve su despacho sin verificar');
+select pruebas.falla(format($$insert into public.membresias (despacho_id, usuario_id, rol) values (%L, %L, 'sustanciador')$$, :'d1', :B), 'agregar miembros antes de la verificación');
+select pruebas.falla(format($$insert into public.procesos (despacho_id, radicado, especialidad, clase, creado_por) values (%L, '11001400300120260000100', 'civil', 'ejecutivo', %L)$$, :'d1', :A), 'crear procesos antes de la verificación');
+select pruebas.falla(format($$select public.verificar_despacho(%L)$$, :'d1'), 'usuario común verifica despacho');
+-- El administrador verifica
+select set_config('request.jwt.claims', '{"sub":"dddddddd-0000-0000-0000-000000000004"}', false);
+select pruebas.ok((select count(*) from public.despachos where not verificado) = 1, 'admin ve despachos pendientes');
+select public.verificar_despacho(:'d1');
+select pruebas.ok((select count(*) from public.procesos) = 0, 'admin no ve procesos de los despachos');
+select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}', false);
 insert into public.membresias (despacho_id, usuario_id, rol) values (:'d1', :B, 'sustanciador');
 insert into public.procesos (despacho_id, radicado, especialidad, clase, creado_por)
   values (:'d1', '11001400300120260012300', 'civil', 'ejecutivo', :A) returning id as p_normal \gset
@@ -39,6 +51,7 @@ insert into storage.objects (bucket_id, name) values ('expedientes', :'d1' || '/
 select pruebas.falla($$insert into storage.objects (bucket_id, name) values ('expedientes', 'otra/ruta/x.docx')$$, 'subir a ruta inválida');
 select public.registrar_acceso_documento(:'doc1', 'descargar');
 select pruebas.ok((select count(*) from public.auditoria where accion='descargar') = 1, 'juez ve descarga auditada');
+select pruebas.ok((select count(*) from storage.objects) = 0, 'ni el juez lee Storage directamente (D5)');
 select pruebas.ok((select count(*) from public.auditoria) >= 7, 'escrituras auditadas');
 select pruebas.falla($$update public.auditoria set accion='crear'$$, 'modificar auditoría');
 select pruebas.falla($$delete from public.auditoria$$, 'borrar auditoría');
@@ -59,6 +72,11 @@ select pruebas.ok((select count(*) from public.perfiles) = 2, 've perfiles de co
 select pruebas.falla(format($$update public.procesos set reservado=true where id=%L$$, :'p_normal'), 'sustanciador cambia reserva');
 select pruebas.falla(format($$insert into public.membresias (despacho_id, usuario_id, rol) values (%L, %L, 'juez')$$, :'d1', :C), 'sustanciador agrega miembros');
 select pruebas.falla(format($$select public.registrar_acceso_documento(%L, 'descargar')$$, :'doc1'), 'acceso a doc reservado');
+insert into public.novedades_termino (termino_id, despacho_id, tipo, fecha_inicio, soporte, creado_por)
+  values (:'t1', :'d1', 'suspension', '2026-05-01', 'Auto del 30-abr', :B) returning id as n1 \gset
+update public.novedades_termino set fecha_fin = '2026-05-10' where id = :'n1';
+select pruebas.ok((select fecha_fin from public.novedades_termino where id = :'n1') = '2026-05-10', 'cierra la suspensión del término');
+select pruebas.falla(format($$update public.novedades_termino set tipo='prorroga' where id=%L$$, :'n1'), 'cambiar el tipo de una novedad');
 update public.terminos set estado='cumplido', cumplido_en='2026-10-01' where id = :'t1';
 select pruebas.ok((select estado from public.terminos where id = :'t1') = 'cumplido', 'sustanciador actualiza término');
 
@@ -68,11 +86,14 @@ update public.procesos set asignado_a = :B where id = :'p_reservado';
 select pruebas.falla(format($$update public.procesos set asignado_a=%L where id=%L$$, :C, :'p_normal'), 'asignar a no miembro');
 select set_config('request.jwt.claims', '{"sub":"bbbbbbbb-0000-0000-0000-000000000002"}', false);
 select pruebas.ok((select count(*) from public.procesos) = 2, 'sustanciador asignado ve el reservado');
-select pruebas.ok((select count(*) from storage.objects) = 1, 'sustanciador asignado ve el archivo');
+select pruebas.ok((select count(*) from public.documentos) = 1, 'sustanciador asignado ve el documento');
 
 -- ===== Usuario C (otro despacho)
 select set_config('request.jwt.claims', '{"sub":"cccccccc-0000-0000-0000-000000000003"}', false);
 select public.crear_despacho('Juzgado 2 Civil Municipal', '110014003002', 'Bogotá', 'Bogotá', 'Bogotá', 'civil') as d2 \gset
+select set_config('request.jwt.claims', '{"sub":"dddddddd-0000-0000-0000-000000000004"}', false);
+select public.verificar_despacho(:'d2');
+select set_config('request.jwt.claims', '{"sub":"cccccccc-0000-0000-0000-000000000003"}', false);
 select pruebas.ok((select count(*) from public.despachos) = 1, 'C solo ve su despacho');
 select pruebas.ok((select count(*) from public.procesos) = 0, 'C no ve procesos ajenos');
 select pruebas.ok((select count(*) from public.perfiles) = 1, 'C no ve perfiles ajenos');
@@ -90,9 +111,8 @@ select pruebas.falla($$select public.crear_despacho('x','111111111111','a','b','
 
 -- ===== Admin plataforma y tasas
 reset role;
-insert into public.administradores_plataforma values (:A);
 set role authenticated;
-select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}', false);
+select set_config('request.jwt.claims', '{"sub":"dddddddd-0000-0000-0000-000000000004"}', false);
 insert into public.indices_economicos (tipo, modalidad, vigencia, valor, unidad, fuente)
   values ('interes_bancario_corriente', 'consumo_ordinario', '[2026-10-01,2026-11-01)', 17.5, 'efectivo_anual_pct', 'SFC (dato de prueba)');
 select pruebas.falla($$insert into public.indices_economicos (tipo, modalidad, vigencia, valor, unidad, fuente) values ('interes_bancario_corriente','consumo_ordinario','[2026-10-15,2026-11-15)',18,'efectivo_anual_pct','x')$$, 'tasas traslapadas');
