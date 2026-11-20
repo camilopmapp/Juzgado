@@ -120,7 +120,7 @@ export default async function PaginaTablero({ searchParams }: PageProps<"/tabler
                         aria-valuemax={100}
                         aria-label="Porcentaje del término transcurrido"
                       >
-                        <div className="h-full bg-current opacity-60" style={{ width: `${t.semaforo.porcentaje}%` }} />
+                        <div className={cn("h-full", COLORES[t.semaforo.color].barra)} style={{ width: `${t.semaforo.porcentaje}%` }} />
                       </div>
                     )}
                   </div>

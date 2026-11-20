@@ -9,6 +9,7 @@ import { recalcularTerminos } from "@/features/terminos/servicio";
 import { type EstadoFormulario, errorDeValidacion, fechaCivil, texto } from "@/lib/formularios";
 import { crearClienteAdmin } from "@/lib/supabase/admin";
 import { crearClienteServidor } from "@/lib/supabase/server";
+import { urlDelSitio } from "@/lib/env";
 
 /**
  * Recalcula los términos de todos los despachos verificados tras un cambio del calendario general.
@@ -150,4 +151,26 @@ export async function cambiarValidacionTermino(_previo: EstadoFormulario, formDa
   if (error) return { ok: false, mensaje: error.message };
   revalidatePath("/admin");
   return { ok: true, mensaje: datos.data.estado === "validado" ? "Término marcado como validado." : "Término devuelto a pendiente." };
+}
+
+const esquemaInvitarJuez = z.object({
+  correo: z.email({ message: "Escriba un correo válido" }).transform((c) => c.toLowerCase()),
+});
+
+/**
+ * Invita a un juez a la plataforma (el registro público está cerrado, D3).
+ * Al aceptar crea su contraseña y registra su despacho, que luego se verifica aquí.
+ */
+export async function invitarJuez(_previo: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
+  await requerirAdmin();
+  const datos = esquemaInvitarJuez.safeParse(Object.fromEntries(formData));
+  if (!datos.success) return errorDeValidacion(datos.error, formData);
+  const admin = crearClienteAdmin();
+  const { data: existente } = await admin.from("perfiles").select("id").eq("correo", datos.data.correo).maybeSingle();
+  if (existente) return { ok: false, mensaje: "Ese correo ya tiene cuenta. Puede ingresar y registrar su despacho." };
+  const { error } = await admin.auth.admin.inviteUserByEmail(datos.data.correo, {
+    redirectTo: `${urlDelSitio()}/cuenta/contrasena`,
+  });
+  if (error) return { ok: false, mensaje: `No se pudo enviar la invitación: ${error.message}` };
+  return { ok: true, mensaje: `Invitación enviada a ${datos.data.correo}.` };
 }

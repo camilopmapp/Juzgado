@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { hoyEnColombia } from "@/domain/fechas";
+import { hoyEnColombia, sumarDias } from "@/domain/fechas";
 import { ESPECIALIDADES } from "@/features/despachos/catalogos";
 import { requerirAdmin } from "@/features/despachos/contexto";
 import { UNIDADES } from "@/features/terminos/catalogos";
@@ -12,6 +12,7 @@ import {
   BotonValidacion,
   BotonVerificar,
   FormularioCalendario,
+  FormularioInvitarJuez,
   FormularioSuspensionGeneral,
 } from "./formularios";
 
@@ -22,12 +23,15 @@ export default async function PaginaAdmin() {
   const supabase = await crearClienteServidor();
   const hoy = hoyEnColombia();
   const anio = Number(hoy.slice(0, 4));
+  const haceUnaSemana = sumarDias(hoy, -7);
 
   const [pendientes, festivos, suspensiones, tipos] = await Promise.all([
     supabase
       .from("despachos")
-      .select("id, nombre, codigo, seccional, especialidad, creado_en, solicitante:perfiles!despachos_creado_por_fkey(nombre_completo, correo)")
-      .eq("verificado", false)
+      .select(
+        "id, nombre, codigo, seccional, especialidad, creado_en, verificado, verificado_en, solicitante:perfiles!despachos_creado_por_fkey(nombre_completo, correo)",
+      )
+      .or(`verificado.eq.false,verificado_en.gte.${haceUnaSemana}`)
       .order("creado_en"),
     supabase.from("festivos").select("fecha").gte("fecha", `${anio - 1}-01-01`),
     supabase
@@ -52,12 +56,24 @@ export default async function PaginaAdmin() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Despachos pendientes de verificación</CardTitle>
+          <CardTitle>Invitar a un juez</CardTitle>
+          <CardDescription>
+            El registro público está cerrado. El juez recibe un enlace, crea su contraseña y registra su despacho.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FormularioInvitarJuez />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Verificación de despachos</CardTitle>
           <CardDescription>Confirme con el Consejo Seccional que el código y el juez corresponden antes de verificar.</CardDescription>
         </CardHeader>
         <CardContent>
           {(pendientes.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay solicitudes pendientes.</p>
+            <p className="text-sm text-muted-foreground">No hay solicitudes pendientes ni verificaciones recientes.</p>
           ) : (
             <ul className="divide-y">
               {(pendientes.data ?? []).map((d) => (
@@ -71,7 +87,11 @@ export default async function PaginaAdmin() {
                       Solicitó: {d.solicitante?.nombre_completo || "—"} ({d.solicitante?.correo}) el {formatearFecha(d.creado_en)}
                     </p>
                   </div>
-                  <BotonVerificar despachoId={d.id} />
+                  {d.verificado ? (
+                    <Badge variant="secondary">Verificado el {formatearFecha(d.verificado_en)}</Badge>
+                  ) : (
+                    <BotonVerificar despachoId={d.id} />
+                  )}
                 </li>
               ))}
             </ul>

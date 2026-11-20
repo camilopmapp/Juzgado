@@ -8,7 +8,7 @@ import { formatearRadicado } from "@/domain/radicado";
 import { ESPECIALIDADES } from "@/features/despachos/catalogos";
 import { requerirDespacho } from "@/features/despachos/contexto";
 import { miembrosDelDespacho, obtenerProceso } from "@/features/procesos/queries";
-import { NOVEDADES, UNIDADES } from "@/features/terminos/catalogos";
+import { NOVEDADES, describirCantidad } from "@/features/terminos/catalogos";
 import { terminosConSemaforo } from "@/features/terminos/queries";
 import { calcularTermino } from "@/features/terminos/servicio";
 import { formatearFecha, formatearHora } from "@/lib/formato";
@@ -94,7 +94,7 @@ export default async function PaginaProceso({ params }: PageProps<"/procesos/[id
                   <div>
                     <h3 className="font-medium">{t.tipo?.nombre ?? t.tipo_codigo}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {t.cantidad} {UNIDADES[t.unidad]} desde {formatearFecha(t.fecha_evento)} {formatearHora(t.hora_evento)} ·{" "}
+                      {describirCantidad(t.cantidad, t.unidad)} desde {formatearFecha(t.fecha_evento)} {formatearHora(t.hora_evento)} ·{" "}
                       {t.tipo?.norma}
                     </p>
                     {t.tipo?.estado_validacion === "pendiente_validacion" && (
@@ -123,7 +123,7 @@ export default async function PaginaProceso({ params }: PageProps<"/procesos/[id
                       <li key={n.id} className="rounded-md bg-muted/50 p-2">
                         <strong>{NOVEDADES[n.tipo]}</strong>{" "}
                         {n.tipo === "prorroga"
-                          ? `de ${n.cantidad} ${n.unidad ? UNIDADES[n.unidad] : ""} (${formatearFecha(n.fecha_inicio)})`
+                          ? `de ${n.cantidad && n.unidad ? describirCantidad(n.cantidad, n.unidad) : ""} (${formatearFecha(n.fecha_inicio)})`
                           : `del ${formatearFecha(n.fecha_inicio)} al ${n.fecha_fin ? formatearFecha(n.fecha_fin) : "—"}`}{" "}
                         · {n.soporte}
                         {abiertas.some((a) => a.id === n.id) && (

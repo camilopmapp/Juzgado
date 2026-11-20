@@ -8,7 +8,7 @@ import { FormularioDespacho } from "./formulario-despacho";
 export const metadata: Metadata = { title: "Registrar despacho" };
 
 export default async function PaginaOnboarding() {
-  const { activa } = await obtenerContexto();
+  const { activa, esAdmin } = await obtenerContexto();
   if (activa) redirect(activa.despacho.verificado ? "/tablero" : "/pendiente");
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 px-4 py-10">
@@ -22,6 +22,15 @@ export default async function PaginaOnboarding() {
         </CardHeader>
         <CardContent>
           <FormularioDespacho />
+          {esAdmin && (
+            <p className="mt-4 text-sm">
+              Es administrador de la plataforma:{" "}
+              <a href="/admin" className="underline underline-offset-4">
+                ir a Administración
+              </a>
+              .
+            </p>
+          )}
         </CardContent>
       </Card>
     </main>

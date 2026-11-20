@@ -9,6 +9,7 @@ import {
   cambiarValidacionTermino,
   cargarCalendarioAnual,
   eliminarSuspensionGeneral,
+  invitarJuez,
   registrarSuspensionGeneral,
   verificarDespacho,
 } from "@/features/admin/actions";
@@ -133,6 +134,23 @@ export function BotonValidacion({ codigo, validado }: { codigo: string; validado
         {validado ? "Devolver a pendiente" : "Marcar validado"}
       </BotonEnviar>
       <Resultado estado={estado} />
+    </form>
+  );
+}
+
+export function FormularioInvitarJuez() {
+  const [estado, accion] = useActionState(invitarJuez, ESTADO_INICIAL);
+  return (
+    <form action={accion} noValidate className="flex flex-col gap-3">
+      <MensajeFormulario estado={estado} />
+      <div className="flex flex-wrap items-end gap-2">
+        <Field className="max-w-sm">
+          <FieldLabel htmlFor="correo">Correo del juez</FieldLabel>
+          <Input type="email" {...propsCampo(estado, "correo")} />
+        </Field>
+        <BotonEnviar>Enviar invitación</BotonEnviar>
+      </div>
+      <ErrorCampo estado={estado} campo="correo" />
     </form>
   );
 }
